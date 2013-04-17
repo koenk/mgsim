@@ -81,14 +81,15 @@ Processor::Pipeline::Pipeline(
     std::vector<BypassInfo> bypasses;
 
     // Create the Execute stage
-    size_t fpu_client_id = fpu.RegisterSource(regFile, alloc.m_readyThreads2);
-    m_stages[3].stage  = new ExecuteStage(*this, clock, m_reLatch, m_emLatch, alloc, familyTable, threadTable, fpu, fpu_client_id, config);
+    m_stages[3].stage  = new ExecuteStage(*this, clock, m_reLatch, m_emLatch, alloc, familyTable, threadTable, config);
     m_stages[3].input  = &m_reLatch;
     m_stages[3].output = &m_emLatch;
     bypasses.push_back(BypassInfo(m_emLatch.empty, m_emLatch.Rc, m_emLatch.Rcv));
 
     // Create the Memory stage
-    m_stages[4].stage  = new MemoryStage(*this, clock, m_emLatch, m_mwLatch, dcache, alloc, config);
+    size_t fpu_client_id = fpu.RegisterSource(regFile, alloc.m_readyThreads2);
+    m_stages[4].stage  = new MemoryStage(*this, clock, m_emLatch, m_mwLatch,
+            dcache, alloc, fpu, fpu_client_id, config);
     m_stages[4].input  = &m_emLatch;
     m_stages[4].output = &m_mwLatch;
     bypasses.push_back(BypassInfo(m_mwLatch.empty, m_mwLatch.Rc, m_mwLatch.Rcv));

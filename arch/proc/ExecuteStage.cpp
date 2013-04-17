@@ -3,7 +3,6 @@
 #include <sim/sampling.h>
 #include <sim/log2.h>
 #include <programs/mgsim.h>
-#include <arch/FPU.h>
 #include <sim/breakpoints.h>
 
 #include <cassert>
@@ -57,8 +56,12 @@ Processor::Pipeline::PipeAction Processor::Pipeline::ExecuteStage::OnCycle()
         m_output.address = 0;
         m_output.size    = 0;
 
+        // Clear FPU operation information
+        m_output.fpu_op = FPU_OP_NONE;
+
         // Clear remote information
         m_output.Rrc.type = RemoteMessage::MSG_NONE;
+
     }
 
     // If we need to suspend on an operand, it'll be in Rav (by the Read Stage)
@@ -556,19 +559,15 @@ void Processor::Pipeline::ExecuteStage::ExecDebug(double value, Integer stream) 
     }
 }
 
-Processor::Pipeline::ExecuteStage::ExecuteStage(Pipeline& parent, Clock& clock, const ReadExecuteLatch& input, ExecuteMemoryLatch& output, Allocator& alloc, FamilyTable& familyTable, ThreadTable& threadTable, FPU& fpu, size_t fpu_source, Config& /*config*/)
+Processor::Pipeline::ExecuteStage::ExecuteStage(Pipeline& parent, Clock& clock, const ReadExecuteLatch& input, ExecuteMemoryLatch& output, Allocator& alloc, FamilyTable& familyTable, ThreadTable& threadTable, Config& /*config*/)
   : Stage("execute", parent, clock),
     m_input(input),
     m_output(output),
     m_allocator(alloc),
     m_familyTable(familyTable),
     m_threadTable(threadTable),
-    m_fpu(fpu),
-    m_fpuSource(fpu_source),
-    m_flop(0),
     m_op(0)
 {
-    RegisterSampleVariableInObject(m_flop, SVC_CUMULATIVE);
     RegisterSampleVariableInObject(m_op, SVC_CUMULATIVE);
 }
 

@@ -1,6 +1,7 @@
 #include "Processor.h"
 #include <sim/breakpoints.h>
 #include <sim/sampling.h>
+#include <arch/FPU.h>
 
 #include <cassert>
 #include <sstream>
@@ -17,8 +18,28 @@ Processor::Pipeline::PipeAction Processor::Pipeline::MemoryStage::OnCycle()
 
     unsigned inload = 0;
     unsigned instore = 0;
+    unsigned infpu = 0;
 
-    if (m_input.size > 0)
+    if (m_input.fpu_op != FPU_OP_NONE)
+    {
+        // Dispatch long-latency operation to FPU
+        if (!m_fpu.QueueOperation(m_fpuSource, m_input.fpu_op, 8,
+            m_input.Rav.m_float.tofloat(m_input.Rav.m_size),
+            m_input.Rbv.m_float.tofloat(m_input.Rbv.m_size),
+            m_input.Rc))
+        {
+            DeadlockWrite("F%u/T%u(%llu) %s unable to queue FP operation %u on %s for %s",
+                            (unsigned)m_input.fid, (unsigned)m_input.tid, (unsigned long long)m_input.logical_index, m_input.pc_sym,
+                            (unsigned)m_input.fpu_op, m_fpu.GetFQN().c_str(), m_input.Rc.str().c_str());
+
+            return PIPE_STALL;
+        }
+
+        rcv = MAKE_PENDING_PIPEVALUE(rcv.m_size);
+        infpu = 1;
+    }
+
+    if (!infpu && m_input.size > 0)
     {
         // It's a new memory operation!
         assert(m_input.size <= sizeof(uint64_t));
@@ -288,25 +309,31 @@ Processor::Pipeline::PipeAction Processor::Pipeline::MemoryStage::OnCycle()
         m_load_bytes += inload;
         m_stores += !!instore;
         m_store_bytes += instore;
+
+        m_flop += infpu;
     }
     return PIPE_CONTINUE;
 }
 
-Processor::Pipeline::MemoryStage::MemoryStage(Pipeline& parent, Clock& clock, const ExecuteMemoryLatch& input, MemoryWritebackLatch& output, DCache& dcache, Allocator& alloc, Config& /*config*/)
+Processor::Pipeline::MemoryStage::MemoryStage(Pipeline& parent, Clock& clock, const ExecuteMemoryLatch& input, MemoryWritebackLatch& output, DCache& dcache, Allocator& alloc, FPU& fpu, size_t fpu_source, Config& /*config*/)
     : Stage("memory", parent, clock),
       m_input(input),
       m_output(output),
       m_allocator(alloc),
       m_dcache(dcache),
+      m_fpu(fpu),
+      m_fpuSource(fpu_source),
       m_loads(0),
       m_stores(0),
       m_load_bytes(0),
-      m_store_bytes(0)
+      m_store_bytes(0),
+      m_flop(0)
 {
     RegisterSampleVariableInObject(m_loads, SVC_CUMULATIVE);
     RegisterSampleVariableInObject(m_stores, SVC_CUMULATIVE);
     RegisterSampleVariableInObject(m_load_bytes, SVC_CUMULATIVE);
     RegisterSampleVariableInObject(m_store_bytes, SVC_CUMULATIVE);
+    RegisterSampleVariableInObject(m_flop, SVC_CUMULATIVE);
 }
 
 }

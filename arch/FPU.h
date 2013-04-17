@@ -12,19 +12,6 @@ class Config;
 namespace Simulator
 {
 
-/**
- * The different kinds of floating point operations that the FPU can perform
- */
-enum FPUOperation
-{
-    FPU_OP_NONE = -1,   ///< Reserved for internal use
-    FPU_OP_ADD  =  0,   ///< Addition
-    FPU_OP_SUB,         ///< Subtraction
-    FPU_OP_MUL,         ///< Multiplication
-    FPU_OP_DIV,         ///< Division
-    FPU_OP_SQRT,        ///< Square root
-    FPU_NUM_OPS         ///< Number of operations
-};
 
 /**
  * @brief Floating Point Unit

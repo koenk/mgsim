@@ -207,6 +207,9 @@ class Pipeline : public Object, public Inspect::Interface<Inspect::Read>
 
         PSize         placeSize;
 
+        FPUOperation fpu_op;
+        PipeValue Rav, Rbv;
+
         RemoteMessage Rrc;
 
         // For debugging only
@@ -217,6 +220,8 @@ class Pipeline : public Object, public Inspect::Interface<Inspect::Read>
             address(0), size(0), sign_extend(false),
             Rcv(), Rc(),
             placeSize(0),
+            fpu_op(FPU_OP_NONE),
+            Rav(), Rbv(),
             Rrc(), Ra() {}
     };
 
@@ -335,9 +340,6 @@ class Pipeline : public Object, public Inspect::Interface<Inspect::Read>
         Allocator&              m_allocator;
         FamilyTable&            m_familyTable;
         ThreadTable&            m_threadTable;
-        FPU&                    m_fpu;
-        size_t                  m_fpuSource;    // Which input are we to the FPU?
-        uint64_t                m_flop;         // FP operations
         uint64_t                m_op;           // Instructions
 
         bool       MemoryWriteBarrier(TID tid) const;
@@ -383,11 +385,8 @@ class Pipeline : public Object, public Inspect::Interface<Inspect::Read>
 
         static RegValue PipeValueToRegValue(RegType type, const PipeValue& v);
     public:
-        size_t GetFPUSource() const { return m_fpuSource; }
+        ExecuteStage(Pipeline& parent, Clock& clock, const ReadExecuteLatch& input, ExecuteMemoryLatch& output, Allocator& allocator, FamilyTable& familyTable, ThreadTable& threadTable, Config& config);
 
-        ExecuteStage(Pipeline& parent, Clock& clock, const ReadExecuteLatch& input, ExecuteMemoryLatch& output, Allocator& allocator, FamilyTable& familyTable, ThreadTable& threadTable, FPU& fpu, size_t fpu_source, Config& config);
-
-        uint64_t getFlop() const { return m_flop; }
         uint64_t getOp()   const { return m_op; }
     };
 
@@ -397,16 +396,24 @@ class Pipeline : public Object, public Inspect::Interface<Inspect::Read>
         MemoryWritebackLatch&     m_output;
         Allocator&                m_allocator;
         DCache&                   m_dcache;
+        FPU&                      m_fpu;
+        size_t                    m_fpuSource;     // Which input are we to the FPU?
         uint64_t                  m_loads;         // nr of successful loads
         uint64_t                  m_stores;        // nr of successful stores
         uint64_t                  m_load_bytes;    // nr of successfully loaded bytes
         uint64_t                  m_store_bytes;   // nr of successfully stored bytes
+        uint64_t                  m_flop;          // nr of floating point ops
+
 
         PipeAction OnCycle();
     public:
-        MemoryStage(Pipeline& parent, Clock& clock, const ExecuteMemoryLatch& input, MemoryWritebackLatch& output, DCache& dcache, Allocator& allocator, Config& config);
+        size_t GetFPUSource() const { return m_fpuSource; }
+
+        MemoryStage(Pipeline& parent, Clock& clock, const ExecuteMemoryLatch& input, MemoryWritebackLatch& output, DCache& dcache, Allocator& allocator, FPU& fpu, size_t fpu_source, Config& config);
         void addMemStatistics(uint64_t& nr, uint64_t& nw, uint64_t& nrb, uint64_t& nwb) const
         { nr += m_loads; nw += m_stores; nrb += m_load_bytes; nwb += m_store_bytes; }
+
+        uint64_t getFlop() const { return m_flop; }
     };
 
     class DummyStage : public Stage
@@ -459,11 +466,11 @@ public:
     uint64_t GetNStages() const { return m_stages.size(); }
     uint64_t GetStagesRun() const { return m_nStagesRun; }
 
-    size_t GetFPUSource() const { return dynamic_cast<ExecuteStage&>(*m_stages[3].stage).GetFPUSource(); }
+    size_t GetFPUSource() const { return dynamic_cast<MemoryStage&>(*m_stages[4].stage).GetFPUSource(); }
 
     float    GetEfficiency() const { return (float)m_nStagesRun / m_stages.size() / (float)std::max<uint64_t>(1ULL, m_pipelineBusyTime); }
 
-    uint64_t GetFlop() const { return dynamic_cast<ExecuteStage&>(*m_stages[3].stage).getFlop(); }
+    uint64_t GetFlop() const { return dynamic_cast<MemoryStage&>(*m_stages[4].stage).getFlop(); }
     uint64_t GetOp()   const { return dynamic_cast<ExecuteStage&>(*m_stages[3].stage).getOp(); }
     void     CollectMemOpStatistics(uint64_t& nr, uint64_t& nw, uint64_t& nrb, uint64_t& nwb) const
     { return dynamic_cast<MemoryStage&>(*m_stages[4].stage).addMemStatistics(nr, nw, nrb, nwb); }

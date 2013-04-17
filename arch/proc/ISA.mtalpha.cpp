@@ -1,5 +1,4 @@
 #include "Processor.h"
-#include <arch/FPU.h>
 #include <arch/symtable.h>
 
 #include <cassert>
@@ -1276,28 +1275,16 @@ Processor::Pipeline::PipeAction Processor::Pipeline::ExecuteStage::ExecuteInstru
             }
             else
             {
+                // Forward to mem stage which issues FPU ops
                 assert(fpuop != FPU_OP_NONE);
 
-                // Dispatch long-latency operation to FPU
-                if (!m_fpu.QueueOperation(m_fpuSource, fpuop, 8,
-                    m_input.Rav.m_float.tofloat(m_input.Rav.m_size),
-                    m_input.Rbv.m_float.tofloat(m_input.Rbv.m_size),
-                    m_input.Rc))
-                {
-                    DeadlockWrite("F%u/T%u(%llu) %s unable to queue FP operation %u on %s for %s",
-                                  (unsigned)m_input.fid, (unsigned)m_input.tid, (unsigned long long)m_input.logical_index, m_input.pc_sym,
-                                  (unsigned)fpuop, m_fpu.GetFQN().c_str(), m_input.Rc.str().c_str());
-
-                    return PIPE_STALL;
+                COMMIT {
+                    m_output.Rav = m_input.Rav;
+                    m_output.Rbv = m_input.Rbv;
+                    m_output.Rc = m_input.Rc;
+                    m_output.fpu_op = fpuop;
                 }
 
-                COMMIT
-                {
-                    m_output.Rcv = MAKE_PENDING_PIPEVALUE(m_output.Rcv.m_size);
-
-                    // We've executed a floating point operation
-                    m_flop++;
-                }
             }
         }
         break;
@@ -1323,7 +1310,7 @@ Processor::Pipeline::PipeAction Processor::Pipeline::ExecuteStage::ExecuteInstru
 
             case A_MISCFUNC_RPCC:
                 // Read processor cycle count
-            // NOTE: the Alpha spec specifies that the higher 32-bits
+                // NOTE: the Alpha spec specifies that the higher 32-bits
                 // are operating-system dependent. In our case we stuff
                 // extra precision from the cycle counter.
                 COMMIT {

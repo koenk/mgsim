@@ -442,7 +442,7 @@ void MGSystem::PrintState(const vector<string>& /*unused*/) const
                     case STATE_DEADLOCK: cout << "stalled"; break;
                     case STATE_RUNNING:  cout << "running"; break;
                     case STATE_IDLE:
-                    case STATE_ABORTED:  
+                    case STATE_ABORTED:
                         UNREACHABLE; break;
                     }
                     cout << ')' << endl;
