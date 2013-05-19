@@ -24,18 +24,19 @@ Processor::Processor(const std::string& name, Object& parent, Clock& clock, PID 
     m_symtable(&admin.GetSymbolTable()),
     m_pid(pid),
     m_bits(),
-    m_familyTable ("families",      *this, clock, config),
-    m_threadTable ("threads",       *this, clock, config),
-    m_registerFile("registers",     *this, clock, m_allocator, config),
-    m_raunit      ("rau",           *this, clock, m_registerFile, config),
-    m_allocator   ("alloc",         *this, clock, m_familyTable, m_threadTable, m_registerFile, m_raunit, m_icache, m_dcache, m_network, m_pipeline, config),
-    m_icache      ("icache",        *this, clock, m_allocator, memory, config),
-    m_dcache      ("dcache",        *this, clock, m_allocator, m_familyTable, m_registerFile, memory, config),
-    m_excpTable   ("exceptions",    *this, clock, config),
-    m_excpHandler ("excphandler",   *this, clock, m_excpTable, m_allocator, m_familyTable, m_registerFile, config),
-    m_pipeline    ("pipeline",      *this, clock, m_registerFile, m_network, m_allocator, m_familyTable, m_threadTable, m_icache, m_dcache, m_excpTable, m_excpHandler, fpu, config),
-    m_network     ("network",       *this, clock, grid, m_allocator, m_registerFile, m_familyTable, config),
-    m_mmio        ("mmio",          *this, clock),
+    m_familyTable    ("families",        *this, clock, config),
+    m_threadTable    ("threads",         *this, clock, config),
+    m_registerFile   ("registers",       *this, clock, m_allocator, config),
+    m_raunit         ("rau",             *this, clock, m_registerFile, config),
+    m_allocator      ("alloc",           *this, clock, m_familyTable, m_threadTable, m_registerFile, m_raunit, m_icache, m_dcache, m_network, m_pipeline, config),
+    m_icache         ("icache",          *this, clock, m_allocator, memory, config),
+    m_dcache         ("dcache",          *this, clock, m_allocator, m_familyTable, m_registerFile, memory, config),
+    m_excpTable      ("exceptions",      *this, clock, config),
+    m_excpHandler    ("excphandler",     *this, clock, m_excpTable, m_allocator, m_familyTable, m_registerFile, config),
+    m_threadInspector("threadInspector", *this, clock, m_excpTable, m_allocator, m_threadTable, m_familyTable, m_registerFile, config),
+    m_pipeline       ("pipeline",        *this, clock, m_registerFile, m_network, m_allocator, m_familyTable, m_threadTable, m_icache, m_dcache, m_excpTable, m_excpHandler, m_threadInspector, fpu, config),
+    m_network        ("network",         *this, clock, grid, m_allocator, m_registerFile, m_familyTable, config),
+    m_mmio           ("mmio",            *this, clock),
     m_apr_file("aprs", *this, config),
     m_asr_file("asrs", *this, config),
     m_perfcounters(*this, config),
@@ -123,6 +124,8 @@ void Processor::Initialize(Processor* prev, Processor* next)
 
     m_excpHandler.p_service.AddProcess(m_pipeline.p_Pipeline);
 
+    m_threadInspector.p_service.AddProcess(m_pipeline.p_Pipeline);
+
 
     if (m_io_if != NULL)
     {
@@ -147,6 +150,7 @@ void Processor::Initialize(Processor* prev, Processor* next)
     m_allocator.p_readyThreads.AddProcess(m_allocator.p_FamilyAllocate);    // Thread wakeup due to family allocation
     m_allocator.p_readyThreads.AddProcess(m_allocator.p_FamilyCreate);      // Thread wakeup due to local create completion
     m_allocator.p_readyThreads.AddProcess(m_excpHandler.p_NewException);    // Thread wakeup due to exception (handler wakeup)
+    m_allocator.p_readyThreads.AddProcess(m_threadInspector.p_Operation);   // Thread wakeup due to RGET completion
 
     m_allocator.p_activeThreads.AddProcess(m_icache.p_Incoming);            // Thread activation due to I-Cache line return
     m_allocator.p_activeThreads.AddProcess(m_allocator.p_ThreadActivation); // Thread activation due to I-Cache hit (from Ready Queue)
@@ -164,8 +168,9 @@ void Processor::Initialize(Processor* prev, Processor* next)
     m_registerFile.p_asyncW.AddProcess(m_fpu.p_Pipeline);                   // FPU Op writebacks
     m_registerFile.p_asyncW.AddProcess(m_allocator.p_FamilyCreate);         // Family creation
     m_registerFile.p_asyncW.AddProcess(m_allocator.p_ThreadAllocate);       // Thread allocation
+    m_registerFile.p_asyncW.AddProcess(m_threadInspector.p_Operation);      // RGET writeback
 
-
+    m_registerFile.p_asyncR.AddProcess(m_threadInspector.p_Operation);      // RGET read register
     m_registerFile.p_asyncR.AddProcess(m_network.p_DelegationIn);           // Remote register requests
 
     m_registerFile.p_pipelineR1.SetProcess(m_pipeline.p_Pipeline);          // Pipeline read stage
@@ -270,6 +275,9 @@ void Processor::Initialize(Processor* prev, Processor* next)
     m_excpHandler.p_NewException.SetStorageTraces(
         opt(m_allocator.m_readyThreads2) );
 
+    m_threadInspector.p_Operation.SetStorageTraces(
+        opt(m_allocator.m_readyThreads2) );
+
     StorageTraceSet pls_writeback =
         opt(DELEGATE) *
         opt(m_allocator.m_bundle ^ /* FIXME: is the bundle creation buffer really involved here? */
@@ -300,7 +308,8 @@ void Processor::Initialize(Processor* prev, Processor* next)
     }
 
     StorageTraceSet pls_execute =
-        m_fpu.GetSourceTrace(m_pipeline.GetFPUSource());
+        m_fpu.GetSourceTrace(m_pipeline.GetFPUSource()) ^
+        m_threadInspector.m_incoming;
 
     m_pipeline.p_Pipeline.SetStorageTraces(
         /* Writeback */ opt(pls_writeback) *
