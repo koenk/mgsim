@@ -123,6 +123,12 @@ void Processor::Initialize(Processor* prev, Processor* next)
     m_allocator.p_alloc.AddProcess(m_allocator.p_FamilyCreate);         // Local creates
 
     m_excpHandler.p_service.AddProcess(m_pipeline.p_Pipeline);
+    m_excpTable.p_readwrite.AddProcess(m_pipeline.p_Pipeline);
+    m_excpTable.p_readwrite.AddProcess(m_excpHandler.p_NewException);
+    m_excpTable.p_readwrite.AddProcess(m_threadInspector.p_Operation);
+    m_excpTable.p_readwrite.AddProcess(m_pipeline.p_Pipeline);
+    m_excpTable.p_activeHandlerTable.AddProcess(m_pipeline.p_Pipeline);
+    m_excpTable.p_activeHandlerTable.AddProcess(m_excpHandler.p_NewException);
 
     m_threadInspector.p_service.AddProcess(m_pipeline.p_Pipeline);
 
