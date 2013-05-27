@@ -40,13 +40,20 @@ private:
         bool      write;
     };
 
-    struct Response
+    struct ReadResponse
     {
-        bool write;
-        union {
-            WClientID wid;
-            CID       cid;
-        };
+        CID       cid;
+    };
+
+    struct WritebackRequest
+    {
+        char      data[MAX_MEMORY_OPERATION_SIZE];
+        RegAddr   waiting;
+    };
+
+    struct WriteResponse
+    {
+        WClientID wid;
     };
 
     // Information for multi-register writes
@@ -58,6 +65,8 @@ private:
         unsigned int size;   ///< Number of registers remaining to write
         unsigned int offset; ///< Current offset in the multi-register operand
         LFID         fid;    ///< FID of the thread's that's waiting on the register
+
+        WritebackState() : value(0), addr(INVALID_REG), next(INVALID_REG), size(0), offset(0), fid(0) {}
     };
 
     Result FindLine(MemAddr address, Line* &line, bool check_only);
@@ -73,8 +82,9 @@ private:
     size_t               m_sets;            ///< Config: Number of sets in the cace.
     size_t               m_lineSize;        ///< Config: Size of a cache line, in bytes.
     IBankSelector*       m_selector;        ///< Mapping of cache line addresses to tags and set indices.
-    Buffer<CID>          m_completed;       ///< Completed cache-line reads waiting to be processed.
-    Buffer<Response>     m_incoming;        ///< Incoming buffer from memory bus.
+    Buffer<ReadResponse>  m_read_responses; ///< Incoming buffer for read responses from memory bus.
+    Buffer<WriteResponse> m_write_responses;///< Incoming buffer for write acknowledgements from memory bus.
+    Buffer<WritebackRequest> m_writebacks; ///< Incoming buffer for register writebacks after load.
     Buffer<Request>      m_outgoing;        ///< Outgoing buffer to memory bus.
     WritebackState       m_wbstate;         ///< Writeback state
 
@@ -100,8 +110,9 @@ private:
     uint64_t             m_numSnoops;
 
 
-    Result DoCompletedReads();
-    Result DoIncomingResponses();
+    Result DoReadWritebacks();
+    Result DoReadResponses();
+    Result DoWriteResponses();
     Result DoOutgoingRequests();
 
 public:
@@ -111,8 +122,9 @@ public:
     ~DCache();
 
     // Processes
-    Process p_CompletedReads;
-    Process p_Incoming;
+    Process p_ReadWritebacks;
+    Process p_ReadResponses;
+    Process p_WriteResponses;
     Process p_Outgoing;
 
     ArbitratedService<> p_service;

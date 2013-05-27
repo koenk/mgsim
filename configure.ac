@@ -87,31 +87,57 @@ fi
 AC_DEFINE_UNQUOTED([UNIQUE_PTR], [$mg_cv_uniqueptr], [Define to unique_ptr if available, otherwise auto_ptr])
 
 AC_MSG_CHECKING([for the number of bits in a char])
-AC_COMPUTE_INT([char_size], [CHAR_BIT], [#include <limits.h>], [char_size=unknown])
+AC_COMPUTE_INT([char_size], [CHAR_BIT], [@%:@include <limits.h>], [char_size=unknown])
 AC_MSG_RESULT([$char_size])
 if test x$char_size != x8; then
   AC_MSG_ERROR([This program requires CHAR_BIT == 8, found $char_size.])
 fi
 
 # non-standard POSIX functions
-AC_CHECK_FUNCS([getdtablesize fsync fdopendir])
+AC_CHECK_FUNCS([getdtablesize fsync fdopendir getrusage])
+AC_CHECK_MEMBERS([struct rusage.ru_maxrss],[],[],[@%:@include <sys/resource.h>])
+
+if test x$ac_cv_member_struct_rusage_ru_maxrss = xyes; then
+   # Linux/BSD use kilobytes; OS X uses bytes. Need to detect.
+   # If using bytes, we assume that a process that does nothing
+   # else but request 1MB from malloc() should not weigh
+   # more than 1GB of resident size.
+   AC_MSG_CHECKING([which unit rusage.ru_maxrss uses])
+   AC_RUN_IFELSE(
+      [AC_LANG_PROGRAM([@%:@include <sys/resource.h>
+                        @%:@include <stdlib.h>
+                        @%:@include <string.h>],
+                       [struct rusage ru;
+                        char *c = (char*)malloc(1024*1024);
+                        memset(c, 42, 1024*1024);
+                        getrusage(RUSAGE_SELF, &ru);
+                        if (ru.ru_maxrss >= 1024*1024ll)
+                           return 1;
+                        return 0;
+                        ])],
+      [maxrssunit=kbytes], [maxrssunit=bytes], [maxrssunit=unknown])
+    AC_MSG_RESULT([$maxrssunit])
+    AC_DEFINE_UNQUOTED([RUSAGE_MAX_RSS_DIVIDER],
+                       [`if test $maxrssunit = bytes; then echo 1024; else echo 1; fi`],
+                       [Define to the value by which to divide rusage.ru_maxrss to obtain kilobytes])
+fi
 
 AC_MSG_CHECKING([for dirfd])
-AC_TRY_LINK([#include <dirent.h>],
+AC_TRY_LINK([@%:@include <dirent.h>],
             [DIR *p; int d = dirfd(p);],
             [AC_MSG_RESULT([yes])
              AC_DEFINE([HAVE_DIRFD],[1],[Define to 1 if dirfd(DIR*) is available.])],
             [AC_MSG_RESULT([no])])
-AC_CHECK_MEMBERS([DIR.d_fd],[],[],[#include <dirent.h>])
+AC_CHECK_MEMBERS([DIR.d_fd],[],[],[@%:@include <dirent.h>])
 
-AC_CHECK_MEMBERS([struct dirent.d_ino],[],[],[#include <dirent.h>])
-AC_CHECK_MEMBERS([struct dirent.d_type],[],[],[#include <dirent.h>])
-AC_CHECK_MEMBERS([struct stat.st_blocks],[],[],[#include <sys/stat.h>])
-AC_CHECK_MEMBERS([struct stat.st_blksize],[],[],[#include <sys/stat.h>])
-AC_CHECK_MEMBERS([struct stat.st_atimespec],[],[],[#include <sys/stat.h>])
-AC_CHECK_MEMBERS([struct stat.st_mtimespec],[],[],[#include <sys/stat.h>])
-AC_CHECK_MEMBERS([struct stat.st_ctimespec],[],[],[#include <sys/stat.h>])
-AC_CHECK_MEMBERS([struct tm.tm_gmtoff],[],[],[#include <sys/time.h>])
+AC_CHECK_MEMBERS([struct dirent.d_ino],[],[],[@%:@include <dirent.h>])
+AC_CHECK_MEMBERS([struct dirent.d_type],[],[],[@%:@include <dirent.h>])
+AC_CHECK_MEMBERS([struct stat.st_blocks],[],[],[@%:@include <sys/stat.h>])
+AC_CHECK_MEMBERS([struct stat.st_blksize],[],[],[@%:@include <sys/stat.h>])
+AC_CHECK_MEMBERS([struct stat.st_atimespec],[],[],[@%:@include <sys/stat.h>])
+AC_CHECK_MEMBERS([struct stat.st_mtimespec],[],[],[@%:@include <sys/stat.h>])
+AC_CHECK_MEMBERS([struct stat.st_ctimespec],[],[],[@%:@include <sys/stat.h>])
+AC_CHECK_MEMBERS([struct tm.tm_gmtoff],[],[],[@%:@include <sys/time.h>])
 
 AC_SEARCH_LIBS([nanosleep], [rt])
 AC_CHECK_FUNCS([nanosleep usleep])
@@ -172,6 +198,24 @@ AM_CONDITIONAL([ENABLE_SDL], [test "x$enable_sdl" = "xyes"])
 AC_LANG_POP([C++])
 
 ## Feature checks
+
+memory_list=""
+m4_define([ENABLE_MEMORY], [dnl
+AC_ARG_ENABLE([mem_$1], 
+              [AC_HELP_STRING([--disable-mem-$1], [disable support for the $2 memory type (default enable)])],
+              [], [enable_mem_$1=yes])
+if test "x$enable_mem_$1" = "xyes"; then
+  memory_list="$memory_list $1"
+  AC_DEFINE([ENABLE_MEM_$2], [1],[Define to enable the $1 memory model])
+fi
+AM_CONDITIONAL([ENABLE_MEM_$2], [test "x$enable_mem_$1" = "xyes"])
+])
+ENABLE_MEMORY([serial], [SERIAL])
+ENABLE_MEMORY([banked], [BANKED])
+ENABLE_MEMORY([parallel], [PARALLEL])
+ENABLE_MEMORY([ddr], [DDR])
+ENABLE_MEMORY([coma], [COMA])
+ENABLE_MEMORY([zlcoma], [ZLCOMA])
 
 AC_ARG_ENABLE([trace-checks],
               [AC_HELP_STRING([--disable-trace-checks],
@@ -339,6 +383,7 @@ cat <<EOF
 * Configuration done.
 *
 * ISA target:             $target_cpu
+* Memory models:          $memory_list
 *
 * CACTI area computation: $enable_cacti 
 * SDL output:             $enable_sdl

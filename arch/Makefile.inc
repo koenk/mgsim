@@ -1,14 +1,27 @@
 MEMORY_SRC = \
-	arch/mem/BankedMemory.cpp \
-	arch/mem/BankedMemory.h \
-	arch/mem/ParallelMemory.cpp \
-	arch/mem/ParallelMemory.h \
-	arch/mem/SerialMemory.cpp \
-	arch/mem/SerialMemory.h \
-        arch/mem/DDRMemory.cpp \
-        arch/mem/DDRMemory.h \
         arch/mem/DDR.cpp \
         arch/mem/DDR.h
+
+if ENABLE_MEM_BANKED
+MEMORY_SRC += \
+	arch/mem/BankedMemory.cpp \
+	arch/mem/BankedMemory.h
+endif
+if ENABLE_MEM_PARALLEL
+MEMORY_SRC += \
+	arch/mem/ParallelMemory.cpp \
+	arch/mem/ParallelMemory.h
+endif
+if ENABLE_MEM_SERIAL
+MEMORY_SRC += \
+	arch/mem/SerialMemory.cpp \
+	arch/mem/SerialMemory.h
+endif
+if ENABLE_MEM_DDR
+MEMORY_SRC += \
+        arch/mem/DDRMemory.cpp \
+        arch/mem/DDRMemory.h
+endif
 
 DEVICE_SRC = \
 	arch/dev/IODeviceDatabase.h \
@@ -118,7 +131,8 @@ COMMON_SRC = \
 	arch/VirtualMemory.cpp \
 	arch/VirtualMemory.h
 
-ZLCOMA_SRC = \
+if ENABLE_MEM_ZLCOMA
+MEMORY_SRC += \
 	arch/mem/zlcoma/COMA.h \
 	arch/mem/zlcoma/COMA.cpp \
 	arch/mem/zlcoma/Cache.h \
@@ -129,8 +143,10 @@ ZLCOMA_SRC = \
 	arch/mem/zlcoma/Node.cpp \
 	arch/mem/zlcoma/RootDirectory.h \
 	arch/mem/zlcoma/RootDirectory.cpp
+endif
 
-MLCOMA_SRC = \
+if ENABLE_MEM_COMA
+MEMORY_SRC += \
 	arch/mem/coma/COMA.h \
 	arch/mem/coma/COMA.cpp \
 	arch/mem/coma/Cache.h \
@@ -141,11 +157,12 @@ MLCOMA_SRC = \
 	arch/mem/coma/Node.cpp \
 	arch/mem/coma/RootDirectory.h \
 	arch/mem/coma/RootDirectory.cpp
+endif
 
 EXTRA_DIST += \
 	arch/proc/ISA.mips.cpp \
 	arch/proc/ISA.mtalpha.cpp \
 	arch/proc/ISA.mtsparc.cpp
 
-ARCH_SOURCES = $(COMMON_SRC) $(PROCESSOR_SRC) $(MEMORY_SRC) $(DEVICE_SRC) $(ZLCOMA_SRC) $(MLCOMA_SRC)
+ARCH_SOURCES = $(COMMON_SRC) $(PROCESSOR_SRC) $(MEMORY_SRC) $(DEVICE_SRC)
 
