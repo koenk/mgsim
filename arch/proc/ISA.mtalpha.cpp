@@ -296,6 +296,7 @@ void Processor::Pipeline::DecodeStage::DecodeInstruction(const Instruction& inst
         }
 
         default:
+            ThrowIllegalInstructionExceptionWithExcp(*this, m_input.pc, EXCP_INVALID_OPCODE, "Unknown format");
             break;
     }
 }
@@ -1081,6 +1082,8 @@ Processor::Pipeline::PipeAction Processor::Pipeline::ExecuteStage::ExecuteInstru
                         m_output.Ra  = m_input.Ra;
                     }
                 }
+                else
+                    ThrowIllegalInstructionExceptionWithExcp(*this, m_input.pc, EXCP_INVALID_OPCODE, "Unknown opcode (MEM)");
                 break;
             }
         }
@@ -1092,6 +1095,7 @@ Processor::Pipeline::PipeAction Processor::Pipeline::ExecuteStage::ExecuteInstru
         {
             if ((m_input.function & A_UTHREAD_LOCAL_MASK) == A_UTHREAD_LOCAL_VALUE)
             {
+                //COMMIT { printf("LOCAL %lx %x\n", m_input.pc, m_input.function); }
                 switch (m_input.function)
                 {
                 case A_UTHREAD_LDBP:
@@ -1164,10 +1168,12 @@ Processor::Pipeline::PipeAction Processor::Pipeline::ExecuteStage::ExecuteInstru
                 case A_UTHREAD_TRAP:
                     ThrowIllegalInstructionExceptionWithExcp(*this, m_input.pc, EXCP_BREAKPOINT, "Software breakpoint");
                 case A_UTHREAD_PRINT: COMMIT { m_output.Rc = INVALID_REG; ExecDebug(Rav, Rbv); } break;
+                default: ThrowIllegalInstructionExceptionWithExcp(*this, m_input.pc, EXCP_INVALID_OPCODE, "Unknown opcode (OP, local)");
                 }
             }
             else if ((m_input.function & A_UTHREAD_REMOTE_MASK) == A_UTHREAD_REMOTE_VALUE)
             {
+                //COMMIT { printf("REMOTE %lx %x\n", m_input.pc, m_input.function); }
                 const FID fid = m_parent.GetProcessor().UnpackFID(Rav);
                 switch (m_input.function)
                 {
@@ -1217,10 +1223,12 @@ Processor::Pipeline::PipeAction Processor::Pipeline::ExecuteStage::ExecuteInstru
                     }
                     break;
                 }
+                default: ThrowIllegalInstructionExceptionWithExcp(*this, m_input.pc, EXCP_INVALID_OPCODE, "Unknown opcode (OP, remote)");
                 }
             }
             else if ((m_input.function & A_UTHREAD_ALLOC_MASK) == A_UTHREAD_ALLOC_VALUE)
             {
+                //COMMIT { printf("ALLOC %lx %x\n", m_input.pc, m_input.function); }
                 Integer flags  = Rbv;
                 PlaceID place  = m_parent.GetProcessor().UnpackPlace(Rav);
                 bool suspend   = (m_input.function & A_UTHREAD_ALLOC_S_MASK);
@@ -1230,8 +1238,11 @@ Processor::Pipeline::PipeAction Processor::Pipeline::ExecuteStage::ExecuteInstru
             }
             else if ((m_input.function & A_UTHREAD_CREB_MASK) == A_UTHREAD_CREB_VALUE)
             {
+                //COMMIT { printf("CREB %lx %x\n", m_input.pc, m_input.function); }
                 return ExecBundle(Rav, (m_input.function == A_CREATE_B_I), Rbv, m_input.Rc.index);
             }
+            else
+                ThrowIllegalInstructionExceptionWithExcp(*this, m_input.pc, EXCP_INVALID_OPCODE, "Unknown opcode (OP)");
         }
         else if (m_input.opcode == A_OP_UTHREADF)
         {
@@ -1336,6 +1347,9 @@ Processor::Pipeline::PipeAction Processor::Pipeline::ExecuteStage::ExecuteInstru
                     break;
             }
 
+            if (execfunc == NULL)
+                ThrowIllegalInstructionExceptionWithExcp(*this, m_input.pc, EXCP_INVALID_OPCODE, "Unknown opcode (OP/FPOP)");
+
             PipeValue Rcv;
             Rcv.m_size = m_input.RcSize;
             if ((this->*execfunc)(Rcv, m_input.Rav, m_input.Rbv, m_input.function))
@@ -1406,7 +1420,8 @@ Processor::Pipeline::PipeAction Processor::Pipeline::ExecuteStage::ExecuteInstru
         break;
 
     default:
-        ThrowIllegalInstructionException(*this, m_input.pc, "Unknown instruction format: %#x", (int)m_input.format);
+        // Reached by PAL, decode stage detects most cases earlier.
+        ThrowIllegalInstructionExceptionWithExcp(*this, m_input.pc, EXCP_INVALID_OPCODE, "Unknown instruction format: %#x", (int)m_input.format);
         break;
     }
     return PIPE_CONTINUE;
