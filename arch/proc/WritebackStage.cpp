@@ -10,6 +10,7 @@ Processor::Pipeline::PipeAction Processor::Pipeline::WritebackStage::OnCycle()
     int  size             = -1;
     bool allow_reschedule = true;
     bool suspend          = (m_input.suspend != SUSPEND_NONE);
+    bool kill             = m_input.kill && m_input.excp == EXCP_NONE;
     MemAddr pc            = m_input.pc;
 
     if (m_stall)
@@ -32,8 +33,6 @@ Processor::Pipeline::PipeAction Processor::Pipeline::WritebackStage::OnCycle()
                           m_parent.GetProcessor().GetSymbolTable()[m_input.pc].c_str());
             return PIPE_STALL;
         }
-        //TODO: does state need to be cleared here? Or should that be done when
-        //the exception occurs
     }
 
     if (m_input.Rrc.type != RemoteMessage::MSG_NONE)
@@ -298,7 +297,7 @@ Processor::Pipeline::PipeAction Processor::Pipeline::WritebackStage::OnCycle()
         if (m_input.swch)
         {
             // We've switched threads
-            if (m_input.kill)
+            if (kill)
             {
                 // Kill the thread
                 assert(suspend == false);
