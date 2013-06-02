@@ -183,8 +183,10 @@ Result Processor::DCache::Read(MemAddr address, void* data, MemSize size, RegAdd
     size_t offset = (size_t)(address % m_lineSize);
     if (offset + size > m_lineSize)
     {
-        throw exceptf<InvalidArgumentException>(*this, "Read (%#016llx, %zd): Address range crosses over cache line boundary",
+        auto ex = exceptf<InvalidArgumentException>(*this, "Read (%#016llx, %zd): Address range crosses over cache line boundary",
                                                 (unsigned long long)address, (size_t)size);
+        ex.SetExcp(EXCP_INVALID_MEM_ADDR);
+        throw ex;
     }
 
 #if MEMSIZE_MAX >= SIZE_MAX
@@ -198,8 +200,10 @@ Result Processor::DCache::Read(MemAddr address, void* data, MemSize size, RegAdd
     // Check that we're reading readable memory
     if (!m_parent.CheckPermissions(address, size, IMemory::PERM_READ))
     {
-        throw exceptf<SecurityException>(*this, "Read (%#016llx, %zd): Attempting to read from non-readable memory",
+        auto ex = exceptf<SecurityException>(*this, "Read (%#016llx, %zd): Attempting to read from non-readable memory",
                                          (unsigned long long)address, (size_t)size);
+        ex.SetExcp(EXCP_MEM_ACCESS_VIOLATION);
+        throw ex;
     }
 
     if (!p_service.Invoke())
@@ -315,8 +319,10 @@ Result Processor::DCache::Write(MemAddr address, void* data, MemSize size, LFID 
     size_t offset = (size_t)(address % m_lineSize);
     if (offset + size > m_lineSize)
     {
-        throw exceptf<InvalidArgumentException>(*this, "Write (%#016llx, %zd): Address range crosses over cache line boundary",
+        auto ex = exceptf<InvalidArgumentException>(*this, "Write (%#016llx, %zd): Address range crosses over cache line boundary",
                                                 (unsigned long long)address, (size_t)size);
+        ex.SetExcp(EXCP_INVALID_MEM_ADDR);
+        throw ex;
     }
 
 #if MEMSIZE_MAX >= SIZE_MAX
@@ -330,8 +336,10 @@ Result Processor::DCache::Write(MemAddr address, void* data, MemSize size, LFID 
     // Check that we're writing writable memory
     if (!m_parent.CheckPermissions(address, size, IMemory::PERM_WRITE))
     {
-        throw exceptf<SecurityException>(*this, "Write (%#016llx, %zd): Attempting to write to non-writable memory",
+        auto ex = exceptf<SecurityException>(*this, "Write (%#016llx, %zd): Attempting to write to non-writable memory",
                                          (unsigned long long)address, (size_t)size);
+        ex.SetExcp(EXCP_MEM_ACCESS_VIOLATION);
+        throw ex;
     }
 
     if (!p_service.Invoke())
@@ -589,8 +597,8 @@ Result Processor::DCache::DoReadResponses()
         }
     }
 
-    COMMIT { 
-        line.waiting = INVALID_REG;            
+    COMMIT {
+        line.waiting = INVALID_REG;
         line.state = (line.state == LINE_INVALID) ? LINE_EMPTY : LINE_FULL;
     }
     m_read_responses.Pop();
