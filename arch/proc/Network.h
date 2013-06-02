@@ -11,7 +11,7 @@ struct RemoteMessage
     {
         MSG_NONE,           ///< No message
         MSG_ALLOCATE,       ///< Allocate family
-        MSG_BUNDLE,            ///< Indirect creation
+        MSG_BUNDLE,         ///< Indirect creation
         MSG_SET_PROPERTY,   ///< Set family property
         MSG_CREATE,         ///< Create family
         MSG_SYNC,           ///< Synchronise on family
@@ -19,6 +19,8 @@ struct RemoteMessage
         MSG_BREAK,          ///< Break
         MSG_RAW_REGISTER,   ///< Raw register response
         MSG_FAM_REGISTER,   ///< Family register request or response
+        MSG_RGET,           ///< Thread state inspection
+        MSG_RPUT,           ///< Thread state modification
     };
 
     Type type;      ///< Type of the message
@@ -85,6 +87,18 @@ struct RemoteMessage
             RemoteRegType kind;
             bool          write;
         } famreg;
+
+        struct
+        {
+            PID              pid;
+            TID              vtid;
+            ThreadStateField field;
+            union
+            {
+                Integer      value;
+                RegAddr      writeback_reg;
+            };
+        } threadstate;
     };
 
     std::string str() const;
@@ -192,6 +206,8 @@ struct AllocResponse
     bool     exact;     ///< If the allocate was exact, unwind all the way
 };
 
+class ThreadInspector;
+
 class Network : public Object, public Inspect::Interface<Inspect::Read>
 {
     /*
@@ -291,7 +307,7 @@ public:
         bool     broken;
     };
 
-    Network(const std::string& name, Processor& parent, Clock& clock, const std::vector<Processor*>& grid, Allocator& allocator, RegisterFile& regFile, FamilyTable& familyTable, Config& config);
+    Network(const std::string& name, Processor& parent, Clock& clock, const std::vector<Processor*>& grid, Allocator& allocator, RegisterFile& regFile, FamilyTable& familyTable, ThreadInspector& threadInspector, Config& config);
     Network(const Network&) = delete;
     Network& operator=(const Network&) = delete;
 
@@ -330,6 +346,7 @@ private:
     RegisterFile&                  m_regFile;
     FamilyTable&                   m_familyTable;
     Allocator&                     m_allocator;
+    ThreadInspector&               m_threadInspector;
     Network*                       m_prev;
     Network*                       m_next;
     const std::vector<Processor*>& m_grid;
